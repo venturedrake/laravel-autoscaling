@@ -5,6 +5,8 @@ namespace VentureDrake\LaravelAutoscaling\Commands;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Laravel\Forge\Exceptions\RateLimitExceededException;
 use Laravel\Forge\Forge;
 use Linode\LinodeClient;
 
@@ -28,7 +30,20 @@ class LaravelAutoscalingCommand extends Command
             foreach (config('autoscaling.vertical.servers') as $serverName => $server) {
                 $this->line('Vertically scaling '.$serverName);
 
-                foreach ($forge->servers() as $forgeServer) {
+                try {
+                    $forgeServers = $forge->servers();
+                } catch (RateLimitExceededException $e) {
+                    Log::warning('Autoscaling skipped: Forge API rate limit exceeded. Will retry on next scheduled run.', [
+                        'server' => $serverName,
+                        'message' => $e->getMessage(),
+                    ]);
+
+                    $this->warn('Forge API rate limit exceeded. Skipping this run.');
+
+                    return self::SUCCESS;
+                }
+
+                foreach ($forgeServers as $forgeServer) {
                     if ($forgeServer->name == $serverName) {
                         if ($forgeServer->provider == 'akamai') {
                             $linode = $repository->find($forgeServer->identifier);
@@ -63,7 +78,7 @@ class LaravelAutoscalingCommand extends Command
         return self::SUCCESS;
     }
 
-    protected function getVerticalPeriodType($server)
+    protected function getVerticalPeriodType($server): ?string
     {
         $hourly = $server['hourly'];
         $current = Carbon::now()->timezone(config('autoscaling.timezone'));
@@ -82,5 +97,7 @@ class LaravelAutoscalingCommand extends Command
 
             $i++;
         }
+
+        return null;
     }
 }
