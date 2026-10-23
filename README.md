@@ -22,6 +22,14 @@ You can publish the config file with:
 php artisan vendor:publish --tag="autoscaling-config"
 ```
 
+Then set your API tokens in `.env`. The Forge API scopes servers to an organization, so if your Forge token can access more than one organization you also need to set its slug:
+
+```dotenv
+LARAVEL_AUTOSCALING_FORGE_API_TOKEN=
+LARAVEL_AUTOSCALING_FORGE_ORGANIZATION=
+LARAVEL_AUTOSCALING_LINODE_API_TOKEN=
+```
+
 ## Usage
 
 ```php

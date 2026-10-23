@@ -36,6 +36,8 @@
 
 return [
     'forge_api_token' => env('LARAVEL_AUTOSCALING_FORGE_API_TOKEN', ''),
+    // Forge organization slug. If left blank, it is resolved automatically when the token belongs to a single organization.
+    'forge_organization' => env('LARAVEL_AUTOSCALING_FORGE_ORGANIZATION', ''),
     'linode_api_token' => env('LARAVEL_AUTOSCALING_LINODE_API_TOKEN', ''),
     'timezone' => env('LARAVEL_AUTOSCALING_TIMEZONE', 'UTC'),
     'load_balancer' => [

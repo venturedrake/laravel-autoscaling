@@ -27,26 +27,37 @@ class LaravelAutoscalingCommand extends Command
         if (config('autoscaling.vertical.enabled')) {
             $this->info('Vertical scaling started...');
 
+            try {
+                $organization = $this->getForgeOrganization($forge);
+            } catch (RateLimitExceededException $e) {
+                return $this->handleRateLimitExceeded($e);
+            }
+
+            if (! $organization) {
+                return self::FAILURE;
+            }
+
             foreach (config('autoscaling.vertical.servers') as $serverName => $server) {
                 $this->line('Vertically scaling '.$serverName);
 
                 try {
-                    $forgeServers = $forge->servers();
+                    $forgeServers = iterator_to_array($forge->servers($organization, [
+                        'filter' => ['name' => $serverName],
+                    ])->lazy(), false);
                 } catch (RateLimitExceededException $e) {
-                    Log::warning('Autoscaling skipped: Forge API rate limit exceeded. Will retry on next scheduled run.', [
-                        'server' => $serverName,
-                        'message' => $e->getMessage(),
-                    ]);
-
-                    $this->warn('Forge API rate limit exceeded. Skipping this run.');
-
-                    return self::SUCCESS;
+                    return $this->handleRateLimitExceeded($e, $serverName);
                 }
 
                 foreach ($forgeServers as $forgeServer) {
                     if ($forgeServer->name == $serverName) {
                         if ($forgeServer->provider == 'akamai') {
                             $linode = $repository->find($forgeServer->identifier);
+
+                            if (! $linode) {
+                                $this->error('Linode not found: '.$forgeServer->identifier);
+
+                                continue;
+                            }
 
                             $this->line('Linode type: '.$linode->type);
 
@@ -74,6 +85,38 @@ class LaravelAutoscalingCommand extends Command
 
             $this->info('Vertical scaling complete.');
         }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Forge API v2 scopes all server endpoints to an organization.
+     */
+    protected function getForgeOrganization(Forge $forge): ?string
+    {
+        if ($organization = config('autoscaling.forge_organization')) {
+            return $organization;
+        }
+
+        $organizations = $forge->organizations()->toArray();
+
+        if (count($organizations) === 1) {
+            return $organizations[0]->slug;
+        }
+
+        $this->error('Unable to determine the Forge organization. Set LARAVEL_AUTOSCALING_FORGE_ORGANIZATION to your organization slug.');
+
+        return null;
+    }
+
+    protected function handleRateLimitExceeded(RateLimitExceededException $e, ?string $serverName = null): int
+    {
+        Log::warning('Autoscaling skipped: Forge API rate limit exceeded. Will retry on next scheduled run.', [
+            'server' => $serverName,
+            'message' => $e->getMessage(),
+        ]);
+
+        $this->warn('Forge API rate limit exceeded. Skipping this run.');
 
         return self::SUCCESS;
     }
